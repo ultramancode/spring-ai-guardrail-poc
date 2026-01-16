@@ -1,0 +1,28 @@
+services:
+  # Microsoft Presidio Analyzer (PII 탐지)
+  # PII 탐지 엔진 (커스텀 빌드)
+  presidio-analyzer:
+    build: ./presidio
+    container_name: presidio-analyzer
+    ports:
+      - "5001:3000"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 8G
+        reservations:
+          memory: 4G
+    environment:
+      - ANALYZER_CONF_FILE=/etc/presidio/analyzer_config.yaml
+      - LOG_LEVEL=DEBUG
+      - KO_MODEL_PATH=/app/models/ko_ner
+      - EN_MODEL_PATH=/app/models/en_ner
+    command: ["gunicorn", "-b", "0.0.0.0:3000", "app:app", "--timeout", "300", "--workers", "1"]
+  # Microsoft Presidio Anonymizer
+  presidio-anonymizer:
+    image: mcr.microsoft.com/presidio-anonymizer:latest
+    container_name: presidio-anonymizer
+    ports:
+      - "5002:3000"  # 컨테이너 내부 3000
+    restart: unless-stopped
