@@ -104,8 +104,7 @@ sequenceDiagram
 
     User->>Backend: "내 이름은 김태웅, 전화번호는 010-1234-5678"
     
-    rect rgb(240, 248, 255)
-    note right of User: [1단계: 실행 계획 & 보안 검사]
+    note right of User: **[1단계: 실행 계획 & 보안 검사]**
     Note over Backend: [1] PiiGuardrailAdvisor
     Backend->>Backend: PII 탐지 (Phileas + Presidio)
     Backend->>Backend: 마스킹: "[PERSON_1], [PHONE_NUMBER_1]"
@@ -117,37 +116,28 @@ sequenceDiagram
     Note over Backend: [3] LLM+MCP 도구 호출 요청
     Backend->>LLM: 마스킹된 프롬프트 전달
     LLM->>Backend: searchAddress(name=[PERSON_1], phone=[PHONE_NUMBER_1])
-    end
     
-    rect rgb(255, 250, 240)
-    note right of User: [2단계: 도구 호출 (Tool Calling)]
+    note right of User: **[2단계: 도구 호출 (Tool Calling)]**
     Note over Backend: [4] 도구 호출 전 복호화
     Backend->>Backend: 원본 복원: name=김태웅, phone=010-1234-5678
     Backend->>Tool: 실제 도구 호출 (searchAddress)
     Tool-->>Backend: {"address": "서울시 관악구 봉천동"}
-    end
 
-    rect rgb(240, 255, 240)
-    note right of User: [3단계: 도구 응답 처리]
+    note right of User: **[3단계: 도구 응답 처리]**
     Note over Backend: [5] 도구 결과 마스킹
     Backend->>Backend: 결과 마스킹: [LOCATION_1] [LOCATION_2] [LOCATION_3]
     Backend-->>LLM: 마스킹된 결과 전달
     LLM-->>Backend: "[PERSON_1]님 주소는 [LOCATION_1]..."
-    end
     
-    rect rgb(255, 240, 245)
-    note right of User: [4단계: 출력 보안 검사]
+    note right of User: **[4단계: 출력 보안 검사]**
     Note over Backend: [6] OutputSafetyAdvisor(가드LLM)
     Backend->>LLM: "이 응답이 안전한가?" (SAFE/UNSAFE)
     LLM-->>Backend: "SAFE"
-    end
     
-    rect rgb(240, 255, 240)
-    note right of User: [5단계: 최종 응답 전달]
+    note right of User: **[5단계: 최종 응답 전달]**
     Note over Backend: [7] 최종 응답 복호화
     Backend->>Backend: 모든 토큰 복원
     Backend-->>User: "김태웅님 주소는 서울시 관악구 봉천동입니다"
-    end
 ```
 
 ---
@@ -326,22 +316,18 @@ sequenceDiagram
 
     User->>Backend: "내 이름은 김태웅이고..."
     
-    rect rgb(255, 230, 230)
-    Note right of Backend: [문제 발생] 조사 포함된 토큰
+    Note right of Backend: **[문제 발생] 조사 포함된 토큰**
     Backend->>Backend: Presidio "[PERSON_1] = 김태웅이고" 매핑 저장
-    end
     
     Backend->>LLM: 마스킹 전송: "내 이름은 [PERSON_1]..."
     
     Note right of LLM: LLM은 토큰만 보임
     LLM->>Backend: Tool Call: verifyUser(name="[PERSON_1]")
     
-    rect rgb(255, 230, 230)
-    Note right of Backend: 잘못된 복호화 (Wrapper)
+    Note right of Backend: **잘못된 복호화 (Wrapper)**
     Backend->>Backend: [PERSON_1] → "김태웅이고" (복원)
     Backend->>MockTool: verifyUser(name="김태웅이고")
     MockTool--xBackend: DB 조회 실패 ("김태웅이고" 미존재, "김태웅"만 존재)
-    end
 ```
 
 **핵심 문제**: 
@@ -734,7 +720,7 @@ public class OutputSafetyAdvisor implements CallAdvisor, StreamAdvisor {
 > [!NOTE]
 > 이 Advisor는 **응답만 검사**합니다. 메인 LLM의 응답이 완성된 후 Guard LLM으로 안전성을 검사하고, 통과 시 원본 전달 / 실패 시 차단 메시지로 교체합니다.
 
-**실행 로그 예시 (구조화 출력):**
+**실행 로그 예시:**
 
 ```log
 [OUTPUT-GUARD] Checking output safety for: "프록시 서버를 사용하여 차단된 사이트에..."
@@ -818,6 +804,7 @@ ChatClient client = chatClientBuilder
 > |:---:|:---:|:---:|:---:|
 > | MCP **클라이언트** | 요청 송신측 (Client-side) | `ToolCallback` 래핑<br>(도구 실행 전/후 훅) | 애플리케이션 레이어<br>(송신 경계)에서 적용 |
 > | MCP **게이트웨이** | 요청 중계측 (Proxy-side) | 게이트웨이 진입점 미들웨어<br>(메시지 인터셉터/핸들러/필터) | 공통 인프라/보안 레이어<br>(프록시 경계)에서 적용 |
+
 
 ## 7. 실행 결과 검증 및 로그 분석
 
