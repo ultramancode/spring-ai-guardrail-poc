@@ -15,4 +15,7 @@ public class PiiChatRequest {
 
     @NotBlank(message = "채팅 텍스트는 필수입니다.")
     private String text;
+
+    private String vendor;
+    private String model;
 }

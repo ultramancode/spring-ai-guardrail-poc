@@ -2,6 +2,7 @@ package com.ultramancode.aiguardrail.common.infrastructure.llm.factory.provider;
 
 import com.ultramancode.aiguardrail.common.infrastructure.llm.factory.DynamicChatModelFactory;
 import com.ultramancode.aiguardrail.common.infrastructure.llm.factory.LlmFactoryRequest;
+import io.micrometer.observation.ObservationRegistry;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -33,6 +34,7 @@ public class OllamaProvider {
     private final DynamicChatModelFactory factory;
     private final RestClient.Builder restClientBuilder;
     private final WebClient.Builder webClientBuilder;
+    private final ObservationRegistry observationRegistry;
 
     @Value("${spring.ai.ollama.base-url:http://localhost:11434}")
     private String defaultBaseUrl;
@@ -84,6 +86,7 @@ public class OllamaProvider {
         return OllamaChatModel.builder()
                 .ollamaApi(ollamaApi)
                 .defaultOptions(options)
+                .observationRegistry(observationRegistry)
                 .build();
     }
 

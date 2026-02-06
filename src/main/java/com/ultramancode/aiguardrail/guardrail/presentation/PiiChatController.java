@@ -19,7 +19,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.MediaType;
 
 /**
- * PII 보호 데모 컨트롤러 (Refactored)
+ * PII 보호 데모 컨트롤러
  */
 @Slf4j
 @RestController
@@ -35,21 +35,20 @@ public class PiiChatController {
     public GuardrailResponse testPii(@RequestBody @Valid PiiChatRequest request) {
         String userInput = request.getText();
         try {
-            log.info("[API-IN] User Request: \"{}\"", userInput);
+            log.info("[API-IN] Request: {}, Vendor: {}, Model: {}", userInput, request.getVendor(), request.getModel());
 
-            // [Observability] Root Span Input Tracing (Tokenized)
-            // Use INTERNAL version to avoid creating redundant child spans in Langfuse UI
             String maskedInput = piiService.tokenizeInternal(userInput);
             guardrailPort.traceInput(maskedInput);
 
             String response = piiChatUseCase.chat(PiiChatCommand.builder()
                     .text(userInput)
+                    .vendor(request.getVendor())
+                    .model(request.getModel())
                     .useMcp(false)
                     .build());
 
-            log.info("[API-OUT] Final Response: \"{}\"", response);
+            log.info("[API-OUT] Response: \"{}\"", response);
 
-            // [Observability] Root Span Output Tracing (Tokenized)
             String maskedOutput = response != null ? piiService.tokenizeInternal(response) : "";
             guardrailPort.traceOutput(maskedOutput);
 
@@ -67,20 +66,20 @@ public class PiiChatController {
     public GuardrailResponse testPiiRealMcp(@RequestBody @Valid PiiChatRequest request) {
         String userInput = request.getText();
         try {
-            log.info("[API-IN-MCP] User Request: \"{}\"", userInput);
+            log.info("[API-IN-MCP] Request: {}, Vendor: {}, Model: {}", userInput, request.getVendor(), request.getModel());
 
-            // [Observability] Root Span Input Tracing (Tokenized)
             String maskedInput = piiService.tokenizeInternal(userInput);
             guardrailPort.traceInput(maskedInput);
 
             String response = piiChatUseCase.chat(PiiChatCommand.builder()
                     .text(userInput)
+                    .vendor(request.getVendor())
+                    .model(request.getModel())
                     .useMcp(true)
                     .build());
 
-            log.info("[API-OUT-MCP] Final Response: \"{}\"", response);
+            log.info("[API-OUT-MCP] Response: \"{}\"", response);
 
-            // [Observability] Root Span Output Tracing (Tokenized)
             String maskedOutput = response != null ? piiService.tokenizeInternal(response) : "";
             guardrailPort.traceOutput(maskedOutput);
 
@@ -97,24 +96,26 @@ public class PiiChatController {
     @PostMapping(value = "/test-mcp-multimodal", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public GuardrailResponse testPiiMcpMultimodal(
             @RequestPart("text") String text,
-            @RequestPart(value = "file", required = false) MultipartFile file) {
+            @RequestPart(value = "file", required = false) MultipartFile file,
+            @RequestPart(value = "vendor", required = false) String vendor,
+            @RequestPart(value = "model", required = false) String model) {
 
         try {
-            log.info("[API-IN-MCP-MULTI] User Request: \"{}\"", text);
+            log.info("[API-IN-MCP-MULTI] Request: {}, Vendor: {}, Model: {}", text, vendor, model);
 
-            // [Observability] Root Span Input Tracing (Tokenized)
             String maskedInput = piiService.tokenizeInternal(text);
             guardrailPort.traceInput(maskedInput);
 
             String response = piiChatUseCase.chat(PiiChatCommand.builder()
                     .text(text)
-                    .file(file) // Pass file to Command
+                    .file(file)
+                    .vendor(vendor)
+                    .model(model)
                     .useMcp(true)
                     .build());
 
-            log.info("[API-OUT-MCP-MULTI] Final Response: \"{}\"", response);
+            log.info("[API-OUT-MCP-MULTI] Response: \"{}\"", response);
 
-            // [Observability] Root Span Output Tracing (Tokenized)
             String maskedOutput = response != null ? piiService.tokenizeInternal(response) : "";
             guardrailPort.traceOutput(maskedOutput);
 

@@ -19,5 +19,10 @@ public class PiiChatCommand {
      * null이면 기본값(gemini) 사용
      */
     private final String vendor;
-}
 
+    /**
+     * 모델명 (예: gemini-2.0-flash, gpt-4o, llama3)
+     * null이면 프로바이더의 기본값 사용
+     */
+    private final String model;
+}
