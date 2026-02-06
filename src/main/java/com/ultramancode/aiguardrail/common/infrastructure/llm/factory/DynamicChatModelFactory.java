@@ -1,8 +1,13 @@
 package com.ultramancode.aiguardrail.common.infrastructure.llm.factory;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import io.micrometer.observation.ObservationRegistry;
+import org.springframework.ai.chat.client.observation.ChatClientObservationConvention;
+import org.springframework.ai.chat.client.advisor.observation.AdvisorObservationConvention;
+import org.springframework.lang.Nullable;
 import org.springframework.stereotype.Service;
 
 import java.util.Map;
@@ -23,7 +28,16 @@ import java.util.function.Function;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class DynamicChatModelFactory {
+
+    private final ObservationRegistry observationRegistry;
+
+    @Nullable
+    private final ChatClientObservationConvention chatClientObservationConvention;
+
+    @Nullable
+    private final AdvisorObservationConvention advisorObservationConvention;
 
     private final Map<String, Function<LlmFactoryRequest, ChatModel>> providers = new ConcurrentHashMap<>();
 
@@ -71,7 +85,9 @@ public class DynamicChatModelFactory {
      */
     public ChatClient createChatClient(LlmFactoryRequest request) {
         ChatModel model = createChatModel(request);
-        return ChatClient.builder(model).build();
+        // 스프링 AI의 관측(Observability) 설정을 모두 포함하여 빌드. 도구 호출 이름(tool_call) 등 Langfuse 표기
+        return ChatClient.builder(model, observationRegistry,
+                chatClientObservationConvention, advisorObservationConvention).build();
     }
 
     /**

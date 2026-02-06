@@ -38,8 +38,8 @@ public class PiiChatController {
             log.info("[API-IN] User Request: \"{}\"", userInput);
 
             // [Observability] Root Span Input Tracing (Tokenized)
-            // Controller level tracing ensures the 'Root Span' is tagged, validating visibility in Trace Lists.
-            String maskedInput = piiService.tokenize(userInput);
+            // Use INTERNAL version to avoid creating redundant child spans in Langfuse UI
+            String maskedInput = piiService.tokenizeInternal(userInput);
             guardrailPort.traceInput(maskedInput);
 
             String response = piiChatUseCase.chat(PiiChatCommand.builder()
@@ -50,7 +50,7 @@ public class PiiChatController {
             log.info("[API-OUT] Final Response: \"{}\"", response);
 
             // [Observability] Root Span Output Tracing (Tokenized)
-            String maskedOutput = response != null ? piiService.tokenize(response) : "";
+            String maskedOutput = response != null ? piiService.tokenizeInternal(response) : "";
             guardrailPort.traceOutput(maskedOutput);
 
             return GuardrailResponse.success(userInput, response != null ? response : "(No Content)");
@@ -70,7 +70,7 @@ public class PiiChatController {
             log.info("[API-IN-MCP] User Request: \"{}\"", userInput);
 
             // [Observability] Root Span Input Tracing (Tokenized)
-            String maskedInput = piiService.tokenize(userInput);
+            String maskedInput = piiService.tokenizeInternal(userInput);
             guardrailPort.traceInput(maskedInput);
 
             String response = piiChatUseCase.chat(PiiChatCommand.builder()
@@ -81,7 +81,7 @@ public class PiiChatController {
             log.info("[API-OUT-MCP] Final Response: \"{}\"", response);
 
             // [Observability] Root Span Output Tracing (Tokenized)
-            String maskedOutput = response != null ? piiService.tokenize(response) : "";
+            String maskedOutput = response != null ? piiService.tokenizeInternal(response) : "";
             guardrailPort.traceOutput(maskedOutput);
 
             return GuardrailResponse.success(userInput, response != null ? response : "(No Content)");
@@ -103,7 +103,7 @@ public class PiiChatController {
             log.info("[API-IN-MCP-MULTI] User Request: \"{}\"", text);
 
             // [Observability] Root Span Input Tracing (Tokenized)
-            String maskedInput = piiService.tokenize(text);
+            String maskedInput = piiService.tokenizeInternal(text);
             guardrailPort.traceInput(maskedInput);
 
             String response = piiChatUseCase.chat(PiiChatCommand.builder()
@@ -115,7 +115,7 @@ public class PiiChatController {
             log.info("[API-OUT-MCP-MULTI] Final Response: \"{}\"", response);
 
             // [Observability] Root Span Output Tracing (Tokenized)
-            String maskedOutput = response != null ? piiService.tokenize(response) : "";
+            String maskedOutput = response != null ? piiService.tokenizeInternal(response) : "";
             guardrailPort.traceOutput(maskedOutput);
 
             return GuardrailResponse.success(text, response != null ? response : "(No Content)");

@@ -8,7 +8,6 @@ import com.ultramancode.aiguardrail.common.observability.ObservabilityConstants;
 import com.ultramancode.aiguardrail.guardrail.application.port.out.PiiAnalyzerPort;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
-import io.opentelemetry.api.trace.Span;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -40,47 +39,60 @@ public class PiiService implements PiiUseCase {
     // 이유는 랭퓨즈 UI에서 '방패(guardrail)' 아이콘을 띄우기 위해 
     // 'langfuse.observation_type'이라는 태그를 동적으로 주입해야 하기 때문입니다.
     public String tokenize(String text) {
+        if (text == null || text.isBlank())
+            return text;
+
+        // [Optimization] Cache check BEFORE span creation
+        PiiContext context = PiiContextHolder.getContext();
+        if (context.getAnalysisCache().containsKey(text)) {
+            log.debug("[PII-CACHE] Cache hit (No span created) for text: '{}'",
+                    text.length() > 20 ? text.substring(0, 20) + "..." : text);
+            return context.getAnalysisCache().get(text);
+        }
+
         return Observation.createNotStarted("pii.tokenize", observationRegistry)
                 .lowCardinalityKeyValue(ObservabilityConstants.LF_OBSERVATION_TYPE, ObservabilityConstants.LF_VAL_GUARDRAIL)
-                .observe(() -> {
-                    if (text == null || text.isBlank()) return text;
+                .observe(() -> tokenizeInternal(text, context));
+    }
 
-                    // [Optimization] Deduplication using Request Scoped Cache
-                    // Since 'tokenize' is called twice (Service & Advisor), this cache prevents double-scanning.
-                    PiiContext context = PiiContextHolder.getContext();
-                    if (context.getAnalysisCache().containsKey(text)) {
-                        log.debug("[PII-CACHE] Cache hit for text: '{}'", text.length() > 20 ? text.substring(0, 20) + "..." : text);
-                        return context.getAnalysisCache().get(text);
-                    }
+    /**
+     * Internal version that skips Micrometer Observation for recursive or
+     * high-frequency calls.
+     */
+    public String tokenizeInternal(String text) {
+        return tokenizeInternal(text, PiiContextHolder.getContext());
+    }
 
-                    List<PiiSpan> allSpans = new ArrayList<>();
-                    for (PiiAnalyzerPort analyzer : piiAnalyzers) {
-                        allSpans.addAll(analyzer.analyze(text));
-                    }
+    private String tokenizeInternal(String text, PiiContext context) {
+        if (text == null || text.isBlank())
+            return text;
 
-                    // ============================================================
-                    // DEDUPLICATION ALGORITHM
-                    // ============================================================
-                    List<PiiSpan> filteredSpans = advancedDeduplication(allSpans);
+        if (context.getAnalysisCache().containsKey(text)) {
+            return context.getAnalysisCache().get(text);
+        }
 
-                    // 3. Sort by START INDEX (descending) for safe string replacement
-                    filteredSpans.sort(Comparator.comparingInt(PiiSpan::start).reversed());
+        List<PiiSpan> allSpans = new ArrayList<>();
+        for (PiiAnalyzerPort analyzer : piiAnalyzers) {
+            allSpans.addAll(analyzer.analyze(text));
+        }
 
-                    StringBuilder sb = new StringBuilder(text);
+        // DEDUPLICATION ALGORITHM
+        List<PiiSpan> filteredSpans = advancedDeduplication(allSpans);
 
-                    for (PiiSpan span : filteredSpans) {
-                        String original = text.substring(span.start(), span.end());
-                        String token = context.getOrCreateToken(original, span.type());
-                        sb.replace(span.start(), span.end(), token);
-                    }
+        // 3. Sort by START INDEX (descending) for safe string replacement
+        filteredSpans.sort(Comparator.comparingInt(PiiSpan::start).reversed());
 
-                    String result = sb.toString();
+        StringBuilder sb = new StringBuilder(text);
 
-                    // Cache the result for this request
-                    context.getAnalysisCache().put(text, result);
+        for (PiiSpan span : filteredSpans) {
+            String original = text.substring(span.start(), span.end());
+            String token = context.getOrCreateToken(original, span.type());
+            sb.replace(span.start(), span.end(), token);
+        }
 
-                    return result;
-                });
+        String result = sb.toString();
+        context.getAnalysisCache().put(text, result);
+        return result;
     }
 
     /**
@@ -151,26 +163,28 @@ public class PiiService implements PiiUseCase {
     public String detokenize(String text) {
         return Observation.createNotStarted("pii.detokenize", observationRegistry)
                 .highCardinalityKeyValue(ObservabilityConstants.LF_OBSERVATION_TYPE, ObservabilityConstants.LF_VAL_GUARDRAIL)
-                .observe(() -> {
-                    if (text == null || text.isBlank()) {
-                        return text;
-                    }
+                .observe(() -> detokenizeInternal(text));
+    }
 
-                    PiiContext context = PiiContextHolder.getContext();
-                    String result = text;
+    public String detokenizeInternal(String text) {
+        if (text == null || text.isBlank()) {
+            return text;
+        }
 
-                    // Replace all tokens with original values
-                    for (var entry : context.getTokenToOriginal().entrySet()) {
-                        result = result.replace(entry.getKey(), entry.getValue());
-                    }
+        PiiContext context = PiiContextHolder.getContext();
+        String result = text;
 
-                    return result;
-                });
+        // Replace all tokens with original values
+        for (var entry : context.getTokenToOriginal().entrySet()) {
+            result = result.replace(entry.getKey(), entry.getValue());
+        }
+
+        return result;
     }
 
     public Object detokenizeRec(Object input) {
         if (input instanceof String str) {
-            return detokenize(str);
+            return detokenizeInternal(str); // Use No-Span version for recursion
         }
         if (input instanceof Map<?, ?> map) {
             Map<Object, Object> newMap = new HashMap<>();

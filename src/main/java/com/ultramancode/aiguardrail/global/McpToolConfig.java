@@ -3,6 +3,7 @@ package com.ultramancode.aiguardrail.global;
 import com.ultramancode.aiguardrail.guardrail.application.port.in.PiiUseCase;
 import com.ultramancode.aiguardrail.guardrail.infrastructure.adapter.tool.PiiToolCallbackWrapper;
 import com.ultramancode.aiguardrail.guardrail.infrastructure.adapter.tool.MockMcpTool;
+import io.micrometer.observation.ObservationRegistry;
 import io.modelcontextprotocol.client.McpSyncClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.mcp.SyncMcpToolCallback;
@@ -34,13 +35,14 @@ public class McpToolConfig {
             MockMcpTool mockTool,
             List<McpSyncClient> mcpClients,
             PiiUseCase piiService,
+            ObservationRegistry observationRegistry,
             @Value("${guardrail.pii.audit-mode:false}") boolean auditMode
     ) {
         List<ToolCallback> allTools = new ArrayList<>();
 
         // 1. Mock Tools (Internal)
         List<ToolCallback> mockCallback = Arrays.stream(ToolCallbacks.from(mockTool))
-                .map(callback -> new PiiToolCallbackWrapper(callback, piiService, auditMode))
+                .map(callback -> new PiiToolCallbackWrapper(callback, piiService, observationRegistry, auditMode))
                 .collect(Collectors.toList());
         allTools.addAll(mockCallback);
         log.info("[MCP-CONFIG] Registered {} Mock tools", mockCallback.size());
@@ -53,7 +55,8 @@ public class McpToolConfig {
                     var tools = mcpClient.listTools(null).tools();
                     var callbacks = tools.stream()
                             .map(tool -> new SyncMcpToolCallback(mcpClient, tool))
-                            .map(callback -> new PiiToolCallbackWrapper(callback, piiService, auditMode))
+                            .map(callback -> new PiiToolCallbackWrapper(callback, piiService, observationRegistry,
+                                    auditMode))
                             .collect(Collectors.toList());
                     allTools.addAll(callbacks);
 
