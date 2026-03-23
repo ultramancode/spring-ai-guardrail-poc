@@ -1,4 +1,4 @@
-package com.ultramancode.aiguardrail.infrastructure.guardrail.pii;
+package com.ultramancode.aiguardrail.guardrail.infrastructure;
 
 import ai.philterd.phileas.PhileasConfiguration;
 import ai.philterd.phileas.model.filtering.TextFilterResult;
@@ -12,7 +12,10 @@ import ai.philterd.phileas.services.filters.filtering.PlainTextFilterService;
 import ai.philterd.phileas.services.strategies.rules.EmailAddressFilterStrategy;
 import ai.philterd.phileas.services.strategies.rules.PhoneNumberFilterStrategy;
 import ai.philterd.phileas.services.strategies.rules.SsnFilterStrategy;
+import com.ultramancode.aiguardrail.guardrail.application.port.out.PiiAnalyzerPort;
+import com.ultramancode.aiguardrail.guardrail.domain.PiiSpan;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -22,31 +25,38 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Uses Phileas (Regex-based) to detect structured PII patterns.
+ * 정규식 기반의 Phileas를 사용하여 구조화된 PII 패턴을 탐지합니다.
  */
 @Slf4j
 @Service
-public class PhileasScanner {
+public class PhileasScanner implements PiiAnalyzerPort {
 
     /**
-     * Confidence score for regex-based pattern matching.
-     * Regex patterns have high confidence (0.95) because they match exact patterns.
-     * Adjust this value to tune deduplication priority against AI-based detection.
+     * 정규식 기반 패턴 매칭에 대한 신뢰 점수입니다.
+     * 정규식 패턴은 정확한 패턴과 일치하므로 높은 신뢰도(0.95)를 가집니다.
+     * 이 값을 조정하여 AI 기반 탐지와의 중복 제거 우선순위를 튜닝할 수 있습니다.
      */
     public static final double REGEX_CONFIDENCE_SCORE = 0.95;
-
+    private static final String SOURCE_PHILEAS = "PHILEAS";
+    private static final String SOURCE_PHILEAS_MANUAL = "PHILEAS-MANUAL";
+    private static final String DEFAULT_CONTEXT = "aiguardrail-context";
+    private static final Pattern KOR_PHONE_PATTERN = Pattern.compile("010-\\d{3,4}-\\d{4}");
     private final PlainTextFilterService filterService;
     private final Policy defaultPolicy;
+    private final boolean traceRawContent;
 
-    public PhileasScanner() throws Exception {
+    public PhileasScanner(
+            @Value("${guardrail.pii.trace-raw-content:false}") boolean traceRawContent
+    ) {
+        this.traceRawContent = traceRawContent;
         Properties properties = new Properties();
         PhileasConfiguration phileasConfiguration = new PhileasConfiguration(properties);
 
-        // ContextService is used for managing redaction context
+        // redaction 컨텍스트 관리를 위한 ContextService 사용
         this.filterService = new PlainTextFilterService(
                 phileasConfiguration,
                 new DefaultContextService(),
-                null // VectorService
+                null // VectorService 미사용
         );
 
         this.defaultPolicy = createDefaultPolicy();
@@ -55,17 +65,17 @@ public class PhileasScanner {
     private Policy createDefaultPolicy() {
         Identifiers identifiers = new Identifiers();
 
-        // SSN
+        // 주민등록번호(SSN)
         Ssn ssn = new Ssn();
         ssn.setSsnFilterStrategies(List.of(new SsnFilterStrategy()));
         identifiers.setSsn(ssn);
 
-        // Email
+        // 이메일
         EmailAddress email = new EmailAddress();
         email.setEmailAddressFilterStrategies(List.of(new EmailAddressFilterStrategy()));
         identifiers.setEmailAddress(email);
 
-        // Phone Number
+        // 전화번호
         PhoneNumber phone = new PhoneNumber();
         phone.setPhoneNumberFilterStrategies(List.of(new PhoneNumberFilterStrategy()));
         identifiers.setPhoneNumber(phone);
@@ -76,64 +86,76 @@ public class PhileasScanner {
         return policy;
     }
 
+    @Override
+    public List<PiiSpan> analyze(String text) {
+        return scan(text);
+    }
+
     public List<PiiSpan> scan(String text) {
         List<PiiSpan> spans = new ArrayList<>();
-        
-        // 1. Standard Phileas Scan
+
+        // 1. 기본 Phileas 스캔
+        performPhileasScan(text, spans);
+
+        // 2. 한국 전화번호 수동 정규식 스캔 (010-XXXX-XXXX)
+        performManualRegexScan(text, spans);
+
+        // 로그 기록
+        for (PiiSpan span : spans) {
+            if (traceRawContent) {
+                log.info(
+                        "[PII-SCAN] Phileas Detected: [{}] - \"{}\" ({})",
+                        span.type(),
+                        span.text(),
+                        span.source()
+                );
+            } else {
+                log.info(
+                        "[PII-SCAN] Phileas Detected: [{}] [{}~{}] ({})",
+                        span.type(),
+                        span.start(),
+                        span.end(),
+                        span.source()
+                );
+            }
+        }
+
+        return spans;
+    }
+
+    private void performPhileasScan(String text, List<PiiSpan> spans) {
         try {
-            TextFilterResult result = filterService.filter(defaultPolicy, "aiguardrail-context", text);
+            TextFilterResult result = filterService.filter(defaultPolicy, DEFAULT_CONTEXT, text);
             result.getExplanation().identifiedSpans().stream()
                     .map(span -> new PiiSpan(
                             span.getFilterType().getType(),
                             span.getCharacterStart(),
                             span.getCharacterEnd(),
                             span.getText(),
-                            "PHILEAS",
+                            SOURCE_PHILEAS,
                             REGEX_CONFIDENCE_SCORE))
                     .forEach(spans::add);
         } catch (Exception e) {
-            // Phileas failure is non-critical; manual regex fallback will still run
+            // Phileas filter()가 checked exception을 선언하므로 여기서만 포착 후 수동 정규식으로 축소합니다.
             log.debug("[PII-SCAN] Phileas engine failed, proceeding with manual regex: {}", e.getMessage());
         }
+    }
 
-        // 2. Manual Korean Phone Regex (010-XXXX-XXXX)
-        // Since default Phileas might be US-centric
-        Pattern korPhone = Pattern.compile("010-\\d{3,4}-\\d{4}");
-        Matcher matcher = korPhone.matcher(text);
-        
+    private void performManualRegexScan(String text, List<PiiSpan> spans) {
+        Matcher matcher = KOR_PHONE_PATTERN.matcher(text);
+
         while (matcher.find()) {
-            boolean alreadyFound = spans.stream().anyMatch(s -> s.start() == matcher.start());
+            final int start = matcher.start();
+            boolean alreadyFound = spans.stream().anyMatch(s -> s.start() == start);
             if (!alreadyFound) {
                 spans.add(new PiiSpan(
-                        "PHONE_NUMBER", // Match Phileas type
-                        matcher.start(),
+                        "PHONE_NUMBER",
+                        start,
                         matcher.end(),
                         matcher.group(),
-                        "PHILEAS-MANUAL",
+                        SOURCE_PHILEAS_MANUAL,
                         REGEX_CONFIDENCE_SCORE));
             }
         }
-
-        // Logging
-        spans.forEach(span -> 
-             log.info("[PII-SCAN] Phileas Detected: [{}] - \"{}\" ({})", 
-                         span.type(), span.text(), span.source())
-        );
-
-        return spans;
     }
-
-    /**
-     * Represents a detected PII span with metadata for deduplication.
-     *
-     * @param type   Entity type (e.g., PHONE_NUMBER, PERSON)
-     * @param start  Start character index (inclusive)
-     * @param end    End character index (exclusive)
-     * @param text   The actual detected text
-     * @param source Engine that detected this span (PHILEAS, PHILEAS-MANUAL, PRESIDIO)
-     * @param score  Confidence score (0.0 ~ 1.0). Used for priority-based deduplication.
-     *               - Phileas (Regex): 0.95 (high confidence for pattern matching)
-     *               - Presidio (AI): Actual model confidence score
-     */
-    public record PiiSpan(String type, int start, int end, String text, String source, double score) {}
 }

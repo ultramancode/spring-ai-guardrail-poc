@@ -1,4 +1,4 @@
-package com.ultramancode.aiguardrail.infrastructure.mock;
+package com.ultramancode.aiguardrail.guardrail.infrastructure.adapter.tool;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.tool.annotation.Tool;
@@ -7,8 +7,8 @@ import org.springframework.stereotype.Component;
 import java.util.Map;
 
 /**
- * Mock MCP Tool for demonstration purposes.
- * Simulates an external MCP server with user/address database.
+ * 데모용 Mock MCP 도구입니다.
+ * 사용자 및 주소 데이터베이스가 포함된 외부 MCP 서버를 시뮬레이션합니다.
  */
 @Slf4j
 @Component
