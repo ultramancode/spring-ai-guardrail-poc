@@ -6,6 +6,22 @@
 
 ---
 
+## 2026-03-24 업데이트
+
+- 이전에 기여한 Microsoft Presidio upstream PR [#1834](https://github.com/microsoft/presidio/pull/1834)의 공식 반영 내용을 프로젝트에 적용했습니다.
+- 기존 커스텀 실행 방식 대신, Presidio 공식 설정 파일(`presidio/conf/analyzer.yaml`, `nlp.yaml`, `recognizers.yaml`) 기반으로 한국어/영어 NER 구성이 가능해졌습니다.
+- 인프라 기동: `docker compose up -d --build`
+- Langfuse 기반 옵저버빌리티(트레이스/생성 기록/실험 점수) 연동을 추가했습니다.
+- 로컬 self-hosted Langfuse + OTEL 경로를 기본 구성으로 통합했습니다.
+
+---
+
+## 🔭 Observability 문서
+
+- Langfuse 기반 관측/운영/평가 상세 문서: [`LANGFUSE_OBSERVABILITY.md`](./LANGFUSE_OBSERVABILITY.md)
+
+---
+
 ## ⚡ Quick Start
 
 ### Prerequisites
@@ -22,11 +38,11 @@ GOOGLE_GENAI_API_KEY=your_google_api_key_here
 PRESIDIO_URL=http://localhost:5001
 ```
 
-### 2. Run Presidio Analyzer (PII Engine)
-Start the custom PII detection engine (supports Korean NER):
+### 2. Run Required Infrastructure
+Start the infrastructure stack:
 
 ```bash
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 > [!NOTE]
@@ -43,9 +59,9 @@ Run the Spring Boot application:
 Send a request containing PII (Korean name, Phone number):
 
 ```bash
-curl -X POST http://localhost:8080/api/pii-demo/chat \
+curl --location 'http://localhost:8080/api/pii/test-mcp' \
   -H "Content-Type: application/json" \
-  -d '{"message": "내 이름은 김태웅이고 전화번호는 010-1234-5678이야 주소 조회해줘"}'
+  -d '{"text": "내 이름은 김태웅이고 전화번호는 010-1234-5678이야 주소 조회해줘"}'
 ```
 
 ---
