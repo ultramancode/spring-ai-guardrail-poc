@@ -1,28 +1,280 @@
 services:
-  # Microsoft Presidio Analyzer (PII 탐지)
-  # PII 탐지 엔진 (커스텀 빌드)
+  # ----------------------------------------------------------------
+  # Microsoft Presidio Stack (Application)
+  # ----------------------------------------------------------------
   presidio-analyzer:
     build: ./presidio
     container_name: presidio-analyzer
     ports:
       - "5001:3000"
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          memory: 8G
-        reservations:
-          memory: 4G
     environment:
-      - ANALYZER_CONF_FILE=/etc/presidio/analyzer_config.yaml
+      - ANALYZER_CONF_FILE=/etc/presidio/analyzer.yaml
+      - NLP_CONF_FILE=/etc/presidio/nlp.yaml
+      - RECOGNIZER_REGISTRY_CONF_FILE=/etc/presidio/recognizers.yaml
       - LOG_LEVEL=DEBUG
-      - KO_MODEL_PATH=/app/models/ko_ner
-      - EN_MODEL_PATH=/app/models/en_ner
-    command: ["gunicorn", "-b", "0.0.0.0:3000", "app:app", "--timeout", "300", "--workers", "1"]
-  # Microsoft Presidio Anonymizer
-  presidio-anonymizer:
-    image: mcr.microsoft.com/presidio-anonymizer:latest
-    container_name: presidio-anonymizer
+
+
+
+  # ----------------------------------------------------------------
+  # Langfuse Self-Hosted Stack (v3 Official Aligned)
+  # ----------------------------------------------------------------
+  langfuse-server:
+    image: langfuse/langfuse:latest
+    container_name: langfuse-server
+    depends_on:
+      langfuse-db:
+        condition: service_started
+      clickhouse:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      createbuckets:
+        condition: service_completed_successfully
     ports:
-      - "5002:3000"  # 컨테이너 내부 3000
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@langfuse-db:5432/${POSTGRES_DB}
+      - NEXTAUTH_SECRET=${LANGFUSE_NEXTAUTH_SECRET}
+      - SALT=${LANGFUSE_SALT}
+      - ENCRYPTION_KEY=${LANGFUSE_ENCRYPTION_KEY}
+      - NEXTAUTH_URL=http://localhost:3000
+      - TELEMETRY_ENABLED=false
+      - LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES=true
+      - LANGFUSE_LOG_LEVEL=debug
+      - CLICKHOUSE_CLUSTER_ENABLED=false
+      
+      # Clickhouse
+      - CLICKHOUSE_URL=http://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:8123
+      - CLICKHOUSE_MIGRATION_URL=clickhouse://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+      - CLICKHOUSE_DB=default
+      
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_AUTH=${REDIS_PASSWORD}
+      
+      # ----------------------------------------------------------------
+      # S3 (MinIO) 통합 설정 - 아래 3개 블록을 모두 넣으세요
+      # ----------------------------------------------------------------
+
+      # 1. 공통 기본 설정 (Fallback용)
+      - LANGFUSE_S3_ENDPOINT=http://minio:9000
+      - LANGFUSE_S3_REGION=us-east-1
+      - LANGFUSE_S3_BUCKET_NAME=langfuse
+      - LANGFUSE_S3_ACCESS_KEY=${MINIO_ROOT_USER}
+      - LANGFUSE_S3_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - LANGFUSE_S3_FORCE_PATH_STYLE=true
+
+      # 2. Event Upload (OTel Trace 저장용)
+      - LANGFUSE_S3_EVENT_UPLOAD_BUCKET=langfuse
+      - LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=http://minio:9000
+      - LANGFUSE_S3_EVENT_UPLOAD_REGION=us-east-1
+      - LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE=true
+
+      # 3. Media Upload (이미지/파일 저장용 - Browser Access Required)
+      - LANGFUSE_S3_MEDIA_UPLOAD_BUCKET=langfuse
+      - LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT=http://minio:9000
+      - LANGFUSE_S3_MEDIA_UPLOAD_REGION=us-east-1
+      - LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE=true
+
     restart: unless-stopped
+
+  langfuse-worker:
+    image: langfuse/langfuse-worker:latest
+    container_name: langfuse-worker
+    depends_on:
+      langfuse-db:
+        condition: service_started
+      clickhouse:
+        condition: service_started
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    environment:
+      - CLICKHOUSE_CLUSTER_ENABLED=false
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@langfuse-db:5432/${POSTGRES_DB}
+      - CLICKHOUSE_URL=http://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:8123
+      - CLICKHOUSE_MIGRATION_URL=clickhouse://${CLICKHOUSE_USER}:${CLICKHOUSE_PASSWORD}@clickhouse:9000
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+      - CLICKHOUSE_DB=default
+      
+      # Redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_AUTH=${REDIS_PASSWORD}
+      - SALT=${LANGFUSE_SALT}
+      - ENCRYPTION_KEY=${LANGFUSE_ENCRYPTION_KEY}
+      # ----------------------------------------------------------------
+      # S3 (MinIO) 통합 설정 - 아래 3개 블록을 모두 넣으세요
+      # ----------------------------------------------------------------
+
+      # 1. 공통 기본 설정 (Fallback용)
+      - LANGFUSE_S3_ENDPOINT=http://minio:9000
+      - LANGFUSE_S3_REGION=us-east-1
+      - LANGFUSE_S3_BUCKET_NAME=langfuse
+      - LANGFUSE_S3_ACCESS_KEY=${MINIO_ROOT_USER}
+      - LANGFUSE_S3_SECRET_KEY=${MINIO_ROOT_PASSWORD}
+      - LANGFUSE_S3_FORCE_PATH_STYLE=true
+
+      # 2.  Event Upload (OTel Trace 저장용 )
+      - LANGFUSE_S3_EVENT_UPLOAD_BUCKET=langfuse
+      - LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT=http://minio:9000
+      - LANGFUSE_S3_EVENT_UPLOAD_REGION=us-east-1
+      - LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE=true
+
+      # 3. Media Upload (이미지/파일 저장용 - Browser Access Required)
+      - LANGFUSE_S3_MEDIA_UPLOAD_BUCKET=langfuse
+      - LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT=http://minio:9000
+      - LANGFUSE_S3_MEDIA_UPLOAD_REGION=us-east-1
+      - LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID=${MINIO_ROOT_USER}
+      - LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY=${MINIO_ROOT_PASSWORD}
+      - LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE=true
+
+    restart: unless-stopped
+
+  langfuse-db:
+    image: postgres:16
+    container_name: langfuse-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - langfuse_postgres_data:/var/lib/postgresql/data
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+
+    restart: unless-stopped
+    environment:
+      - CLICKHOUSE_DB=default
+      - CLICKHOUSE_USER=${CLICKHOUSE_USER}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
+      - CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT=1
+    ports:
+      - "8123:8123"
+      - "19000:9000"  # Changed from 9000 to avoid conflict with MinIO
+    volumes:
+      - ./clickhouse_config.xml:/etc/clickhouse-server/config.d/custom_config.xml
+      - langfuse_clickhouse_data:/var/lib/clickhouse
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+
+
+
+  redis:
+    image: redis:7
+    container_name: redis
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD}
+      - MINIO_SERVER_URL=http://minio:9000
+      - MINIO_BROWSER_REDIRECT_URL=http://minio:9000
+    ports:
+      - "9001:9001"
+      - "9000:9000"  # Changed from 9009 so browser can access minio:9000 URLs
+    volumes:
+      - langfuse_minio_data:/data
+
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until /usr/bin/mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; do
+        echo 'Waiting for MinIO...';
+        sleep 1;
+      done;
+      /usr/bin/mc mb myminio/langfuse --ignore-existing;
+      /usr/bin/mc anonymous set private myminio/langfuse;
+      exit 0;
+      "
+
+  mcp-server:
+    build:
+      context: ./tools/mcp-server
+    container_name: mcp-server
+    ports:
+      - "8081:8081"
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=DEBUG
+
+
+
+  # ----------------------------------------------------------------
+  # Grafana & Tempo (Side-by-Side Comparison Stack)
+  # ----------------------------------------------------------------
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml
+    environment:
+      # Inject Auth Header from Host .env
+      - LANGFUSE_AUTH=${OTEL_EXPORTER_OTLP_HEADERS}
+    ports:
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:latest
+    container_name: tempo
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./tempo-config.yaml:/etc/tempo.yaml
+    ports:
+      - "3200:3200" # Internal
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3001:3000" # Remapped to 3001
+    volumes:
+      - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    restart: unless-stopped
+
+volumes:
+  langfuse_postgres_data:
+  langfuse_clickhouse_data:
+  langfuse_minio_data:
+

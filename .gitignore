@@ -38,6 +38,7 @@ out/
 
 ### Security & Local Config ###
 .env
+gradle.properties
 application-local.properties
 application-secret.properties
 *.log
