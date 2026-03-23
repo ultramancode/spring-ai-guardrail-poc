@@ -1,0 +1,147 @@
+spring:
+  application:
+    name: spring-ai-guardrail-poc
+  main:
+    web-application-type: servlet
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+  config:
+    import: "optional:file:.env[.properties]"
+  ai:
+    google:
+      genai:
+        api-key: ${GOOGLE_GENAI_API_KEY}
+        chat:
+          options:
+            model: ${GEMINI_MODEL:gemini-2.0-flash}
+            temperature: ${GEMINI_TEMP:0.7}
+    ollama:
+      base-url: ${OLLAMA_BASE_URL:http://localhost:11434}
+      chat:
+        options:
+          model: ${OLLAMA_MODEL:gpt-oss:20b}
+          temperature: ${OLLAMA_TEMP:0.7}
+    mcp:
+      client:
+        enabled: true
+        initialized: false
+        toolcallback:
+          enabled: false
+        sse:
+          connections:
+            demo-server:
+              url: ${MCP_SERVER_URL:http://localhost:8081}
+              sse-endpoint: /sse
+    chat:
+      observations:
+        log-prompt: false
+        log-completion: false
+      client:
+        observations:
+          log-prompt: false
+          log-completion: false
+    tools:
+      observations:
+        include-content: false
+
+management:
+  tracing:
+    enabled: true
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${LANGFUSE_OTEL_ENDPOINT:http://localhost:3000/api/public/otel/v1/traces}
+      headers:
+        Authorization: ${OTEL_EXPORTER_OTLP_HEADERS}
+
+app:
+  error:
+    expose-cause: false
+
+observability:
+  capture-raw-content: false
+  max-content-length: 2000
+  upload-raw-attachment: false
+
+logging:
+  pattern:
+    level: "%5p [${spring.application.name:},%X{traceId:-},%X{spanId:-}]"
+  level:
+    io.opentelemetry: INFO
+    org.springframework.ai: INFO
+
+presidio:
+  analyzer:
+    url: ${PRESIDIO_URL:http://localhost:5001}
+
+chat:
+  client:
+    default:
+      model: googleGenAiChatModel
+
+langfuse:
+  public-key: ${LANGFUSE_PUBLIC_KEY}
+  secret-key: ${LANGFUSE_SECRET_KEY}
+  host: ${LANGFUSE_HOST:http://127.0.0.1:3000}
+  prompt-label: ${LANGFUSE_PROMPT_LABEL:production}
+  score:
+    fail-open: ${LANGFUSE_SCORE_FAIL_OPEN:false}
+  link:
+    fail-open: ${LANGFUSE_LINK_FAIL_OPEN:false}
+  ingestion:
+    fail-open: ${LANGFUSE_INGESTION_FAIL_OPEN:false}
+  media:
+    fail-open: ${LANGFUSE_MEDIA_FAIL_OPEN:false}
+  http:
+    connect-timeout-ms: ${LANGFUSE_HTTP_CONNECT_TIMEOUT_MS:3000}
+    response-timeout-ms: ${LANGFUSE_HTTP_RESPONSE_TIMEOUT_MS:7000}
+    read-timeout-ms: ${LANGFUSE_HTTP_READ_TIMEOUT_MS:7000}
+    write-timeout-ms: ${LANGFUSE_HTTP_WRITE_TIMEOUT_MS:7000}
+
+guardrail:
+  multimodal:
+    max-file-size-bytes: ${GUARDRAIL_MULTIMODAL_MAX_FILE_SIZE_BYTES:10485760}
+    max-text-length: ${GUARDRAIL_MULTIMODAL_MAX_TEXT_LENGTH:4000}
+  pdf:
+    on-extract-fail: llm_notice
+    max-extracted-chars: ${GUARDRAIL_PDF_MAX_EXTRACTED_CHARS:20000}
+  pii:
+    audit-mode: false
+    trace-raw-content: false
+    presidio:
+      fail-open: false
+      timeout-ms: ${GUARDRAIL_PII_PRESIDIO_TIMEOUT_MS:5000}
+      max-retries: ${GUARDRAIL_PII_PRESIDIO_MAX_RETRIES:1}
+      retry-backoff-ms: ${GUARDRAIL_PII_PRESIDIO_RETRY_BACKOFF_MS:300}
+    language: ko
+    entities: PERSON,LOCATION,ORG
+    prompt-name: pii-system-prompt
+    multimodal-fallback-enabled: false
+  injection:
+    prompt-name: guardrail-system-prompt
+    log-safe-verdicts: true
+    on-detector-error: block
+  output:
+    vendor: google
+  llm:
+    default-vendor: GOOGLE
+
+experiment:
+  response:
+    max-details: ${EXPERIMENT_RESPONSE_MAX_DETAILS:500}
+  evaluator:
+    on-error: ${EXPERIMENT_EVALUATOR_ON_ERROR:fail}
+  analysis:
+    score-page-size: ${EXPERIMENT_ANALYSIS_SCORE_PAGE_SIZE:200}
+    max-score-pages: ${EXPERIMENT_ANALYSIS_MAX_SCORE_PAGES:1000}
+  langfuse:
+    dataset-run-items-limit: ${EXPERIMENT_LANGFUSE_DATASET_RUN_ITEMS_LIMIT:200}
+    max-dataset-run-item-pages: ${EXPERIMENT_LANGFUSE_MAX_DATASET_RUN_ITEM_PAGES:5000}
+    dataset-items-limit: ${EXPERIMENT_LANGFUSE_DATASET_ITEMS_LIMIT:100}
+    max-dataset-item-pages: ${EXPERIMENT_LANGFUSE_MAX_DATASET_ITEM_PAGES:5000}
+  validation:
+    strict-field-mapping: ${EXPERIMENT_STRICT_FIELD_MAPPING:false}
+    on-missing-field: ${EXPERIMENT_ON_MISSING_FIELD:warn}

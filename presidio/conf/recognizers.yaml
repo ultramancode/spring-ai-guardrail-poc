@@ -1,0 +1,59 @@
+supported_languages:
+  - ko
+  - en
+global_regex_flags: 26
+
+recognizers:
+  - name: HuggingFaceNerRecognizerKo
+    class_name: HuggingFaceNerRecognizer
+    type: predefined
+    enabled: true
+    supported_languages:
+      - ko
+    supported_entities:
+      - PERSON
+      - LOCATION
+      - ORG
+    model_name: /app/models/ko_ner
+    aggregation_strategy: simple
+    chunk_size: 400
+    chunk_overlap: 40
+    threshold: 0.3
+    label_mapping:
+      PER: PERSON
+      PS: PERSON
+      LOC: LOCATION
+      LC: LOCATION
+      ORG: ORG
+      OG: ORG
+      ORGANIZATION: ORG
+
+  - name: HuggingFaceNerRecognizerEn
+    class_name: HuggingFaceNerRecognizer
+    type: predefined
+    enabled: true
+    supported_languages:
+      - en
+    supported_entities:
+      - PERSON
+      - LOCATION
+      - ORG
+    model_name: /app/models/en_ner
+    aggregation_strategy: simple
+    chunk_size: 400
+    chunk_overlap: 40
+    threshold: 0.3
+    label_mapping:
+      PER: PERSON
+      PERSON: PERSON
+      LOC: LOCATION
+      LOCATION: LOCATION
+      ORG: ORG
+      ORGANIZATION: ORG
+
+  - name: SpacyRecognizer
+    type: predefined
+    supported_languages:
+      - ko
+      - en
+    enabled: false

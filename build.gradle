@@ -18,10 +18,14 @@ configurations {
     compileOnly {
         extendsFrom annotationProcessor
     }
+    all {
+        exclude group: 'commons-logging', module: 'commons-logging'
+    }
 }
 
 repositories {
     mavenCentral()
+    maven { url = uri("https://jitpack.io") } // phileas 저장소 호환을 위한 보조 저장소
 }
 
 ext {
@@ -29,18 +33,30 @@ ext {
 }
 
 dependencies {
+    // POC 정책: 리액티브 웹스택 없이 서블릿 MVC만 사용
     implementation 'org.springframework.boot:spring-boot-starter-web'
-    implementation 'org.springframework.boot:spring-boot-starter-webflux'
     implementation 'org.springframework.boot:spring-boot-starter-aop'
-    
-    // Spring AI BOM
-    implementation platform("org.springframework.ai:spring-ai-bom:${springAiVersion}")
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
 
-    // Spring AI - Google GenAI (Gemini)
+    // 관측성 (OTel & Langfuse)
+    implementation 'io.micrometer:micrometer-tracing-bridge-otel'
+    implementation 'io.opentelemetry:opentelemetry-exporter-otlp'
+    implementation 'com.langfuse:langfuse-java:0.1.2' // 현재 프로젝트 기준 안정 버전
+
+    implementation 'org.springframework.ai:spring-ai-starter-mcp-client'
+
+    // Spring AI - Google GenAI (Gemini) 모델
     implementation 'org.springframework.ai:spring-ai-starter-model-google-genai'
-    
-    // PII Protection
+
+    // Spring AI - Ollama (로컬 LLM) 모델
+    implementation 'org.springframework.ai:spring-ai-starter-model-ollama'
+
+    // PII 보호
     implementation 'ai.philterd:phileas:3.1.0'
+
+    // 멀티모달 분석용 PDF 파싱
+    implementation 'org.apache.pdfbox:pdfbox:3.0.3'
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
